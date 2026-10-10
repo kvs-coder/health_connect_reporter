@@ -1,8 +1,17 @@
 package com.kvs.health_connect_reporter
 
+import com.kvs.healthconnectreporter.model.Aggregate
 import com.kvs.healthconnectreporter.model.Availability
+import com.kvs.healthconnectreporter.model.DataOrigin
+import com.kvs.healthconnectreporter.model.Ordering
+import com.kvs.healthconnectreporter.model.Page
 import com.kvs.healthconnectreporter.model.Permission
+import com.kvs.healthconnectreporter.model.TimeGroup
+import com.kvs.healthconnectreporter.model.TimeRange
+import com.kvs.healthconnectreporter.model.payload.Sample
+import com.kvs.healthconnectreporter.model.type.Aggregation
 import com.kvs.healthconnectreporter.model.type.Feature
+import com.kvs.healthconnectreporter.model.type.HealthType
 
 /**
  * The HealthConnectReporter calls the dispatcher makes, one per Dart method.
@@ -24,4 +33,39 @@ interface HealthConnect {
     fun openSettings()
 
     fun openInstall()
+
+    suspend fun read(
+        type: HealthType,
+        range: TimeRange,
+        ordering: Ordering,
+        limit: Int?,
+        origins: Set<DataOrigin>,
+    ): List<Sample>
+
+    suspend fun readPage(
+        type: HealthType,
+        range: TimeRange,
+        pageSize: Int,
+        pageToken: String?,
+        ordering: Ordering,
+        origins: Set<DataOrigin>,
+    ): Page
+
+    suspend fun readById(
+        type: HealthType,
+        id: String,
+    ): Sample
+
+    suspend fun aggregate(
+        aggregation: Aggregation,
+        range: TimeRange,
+        origins: Set<DataOrigin>,
+    ): Aggregate
+
+    suspend fun aggregateGroups(
+        aggregations: Set<Aggregation>,
+        range: TimeRange,
+        group: TimeGroup,
+        origins: Set<DataOrigin>,
+    ): List<Aggregate>
 }

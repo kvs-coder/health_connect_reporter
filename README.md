@@ -8,7 +8,7 @@ A Flutter plugin that reads, writes and observes [Android Health Connect](https:
 
 Its siblings are [health_kit_reporter](https://pub.dev/packages/health_kit_reporter) for Apple Health and [samsung_health_reporter](https://pub.dev/packages/samsung_health_reporter) for Samsung Health.
 
-> **Status**: under construction. `availability` and the permission calls exist; the reader, writer and observer follow (see `AGENTS.md`). Nothing is released yet.
+> **Status**: under construction. `availability`, the permission calls and the reader exist; the writer and observer follow (see `AGENTS.md`). Nothing is released yet.
 
 ## Requirements
 
@@ -84,6 +84,35 @@ if (await HealthConnectReporter.isFeatureAvailable(Feature.skinTemperature)) {
 ```
 
 `openSettings()` opens Health Connect's data management screen, and `openInstall()` opens Health Connect on Google Play when `availability()` is `Availability.updateRequired`.
+
+### Read and aggregate
+
+```dart
+final range = TimeRange.lastDays(7);
+final samples = await HealthConnectReporter.read(HealthType.heartRate, range,
+    ordering: Ordering.ascending, limit: 500);
+for (final sample in samples.whereType<HeartRate>()) {
+  print(sample.harmonized.series.map((e) => e.beatsPerMinute));
+}
+
+// one page at a time
+var page = await HealthConnectReporter.readPage(HealthType.steps, range, pageSize: 100);
+while (page.nextPageToken != null) {
+  page = await HealthConnectReporter.readPage(HealthType.steps, range,
+      pageSize: 100, pageToken: page.nextPageToken);
+}
+
+final weight = await HealthConnectReporter.readById(HealthType.weight, 'record-id');
+
+final steps = await HealthConnectReporter.aggregate(Aggregation.stepsCountTotal, range,
+    origins: {const DataOrigin(packageName: 'com.google.android.apps.fitness')});
+final daily = await HealthConnectReporter.aggregateGroups(
+    {Aggregation.stepsCountTotal, Aggregation.heartRateBpmAvg},
+    range,
+    TimeGroupPeriod(unit: TimeGroupUnit.daily, zoneId: 'Europe/Berlin'));
+```
+
+Values come in the library's canonical units (kg, kcal, m, m/s, W, mmHg, °C, L, mmol/L, percent; durations in milliseconds). Without `PermissionReadHistory()` Health Connect returns data from 30 days before the first grant onwards, and a type that needs a missing feature fails with `NotAvailable`.
 
 Errors arrive as `PlatformException`s whose `code` is the method name and whose `details` name the error: `NotAuthorized`, `InvalidType`, `InvalidValue`, `NotAvailable`, `AnchorExpired` or `Platform`.
 

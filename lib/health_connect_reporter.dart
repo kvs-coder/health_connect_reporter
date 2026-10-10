@@ -3,10 +3,20 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import 'model/aggregate.dart';
 import 'model/availability.dart';
+import 'model/data_origin.dart';
+import 'model/decorator/extensions.dart';
 import 'model/decorator/platform.dart';
+import 'model/page.dart';
+import 'model/payload/sample.dart';
 import 'model/permission.dart';
+import 'model/time_group.dart';
+import 'model/time_range.dart';
+import 'model/type/aggregation.dart';
 import 'model/type/feature.dart';
+import 'model/type/health_type.dart';
+import 'model/type/ordering.dart';
 
 /// [HealthConnectReporter] class.
 /// Reads, writes and observes Android Health Connect data
@@ -24,6 +34,11 @@ import 'model/type/feature.dart';
 /// - [isFeatureAvailable]
 /// - [openSettings]
 /// - [openInstall]
+/// - [read]
+/// - [readPage]
+/// - [readById]
+/// - [aggregate]
+/// - [aggregateGroups]
 ///
 /// Health Connect is available only on Android: on any other platform
 /// [availability] returns [Availability.unavailable] and every other method
@@ -61,6 +76,9 @@ class HealthConnectReporter {
 
   static Set<Permission> _permissions(String json) =>
       Permission.collect(jsonDecode(json)).toSet();
+
+  static List<Map<String, dynamic>> _origins(Set<DataOrigin> origins) =>
+      origins.map((e) => e.map).toList();
 
   static Future<bool> _status(String method,
       [Map<String, dynamic>? arguments]) async {
@@ -120,4 +138,88 @@ class HealthConnectReporter {
   /// [availability] is [Availability.updateRequired].
   ///
   static Future<bool> openInstall() => _status('openInstall');
+
+  /// Reads the samples of a [type] in the [range], following pages
+  /// until [limit] (no limit by default). Newest first by default;
+  /// [origins] reads only the records of these apps.
+  ///
+  /// Without the [PermissionReadHistory] permission Health Connect returns
+  /// only data from 30 days before the first grant onwards.
+  /// Fails with `NotAuthorized` without the read permission, with
+  /// `NotAvailable` when the type needs a [Feature] the device lacks
+  /// and with `InvalidValue` when [limit] is less than 1.
+  ///
+  static Future<List<Sample>> read(HealthType type, TimeRange range,
+      {Ordering ordering = Ordering.descending,
+      int? limit,
+      Set<DataOrigin> origins = const {}}) async {
+    final String json = await _methodChannel.invokeMethod('read', {
+      'type': type.identifier,
+      'range': range.map,
+      'ordering': ordering.value,
+      if (limit != null) 'limit': limit,
+      'origins': _origins(origins),
+    });
+    return Sample.collect(jsonDecode(json));
+  }
+
+  /// Reads one page of the samples of a [type] in the [range]:
+  /// at most [pageSize] (1–5000) samples. Pass [Page.nextPageToken]
+  /// as [pageToken] for the next page.
+  ///
+  static Future<Page> readPage(HealthType type, TimeRange range,
+      {int pageSize = 1000,
+      String? pageToken,
+      Ordering ordering = Ordering.descending,
+      Set<DataOrigin> origins = const {}}) async {
+    final String json = await _methodChannel.invokeMethod('readPage', {
+      'type': type.identifier,
+      'range': range.map,
+      'pageSize': pageSize,
+      if (pageToken != null) 'pageToken': pageToken,
+      'ordering': ordering.value,
+      'origins': _origins(origins),
+    });
+    return Page.fromJson(parseObject(json));
+  }
+
+  /// Reads the record of a [type] with the Health Connect [id],
+  /// a [Sample.id]. Fails with `InvalidValue` when there is none.
+  ///
+  static Future<Sample> readById(HealthType type, String id) async {
+    final String json = await _methodChannel
+        .invokeMethod('readById', {'type': type.identifier, 'id': id});
+    return Sample.factory(parseObject(json));
+  }
+
+  /// Aggregates one metric over the [range], e.g. the total steps.
+  /// Its [Aggregate.value] is null when there is no data.
+  ///
+  static Future<Aggregate> aggregate(Aggregation aggregation, TimeRange range,
+      {Set<DataOrigin> origins = const {}}) async {
+    final String json = await _methodChannel.invokeMethod('aggregate', {
+      'aggregation': aggregation.value,
+      'range': range.map,
+      'origins': _origins(origins),
+    });
+    return Aggregate.fromJson(parseObject(json));
+  }
+
+  /// Aggregates [aggregations] over the [range] in buckets of [group]:
+  /// one [Aggregate] per bucket and metric, buckets in time order.
+  /// [TimeGroupDuration] buckets have a fixed length; [TimeGroupPeriod]
+  /// buckets are calendar periods in their zone.
+  /// Fails with `InvalidValue` when [aggregations] is empty.
+  ///
+  static Future<List<Aggregate>> aggregateGroups(
+      Set<Aggregation> aggregations, TimeRange range, TimeGroup group,
+      {Set<DataOrigin> origins = const {}}) async {
+    final String json = await _methodChannel.invokeMethod('aggregateGroups', {
+      'aggregations': aggregations.map((e) => e.value).toList(),
+      'range': range.map,
+      'group': group.map,
+      'origins': _origins(origins),
+    });
+    return Aggregate.collect(jsonDecode(json));
+  }
 }

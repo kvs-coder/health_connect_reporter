@@ -5,6 +5,9 @@ import 'package:health_connect_reporter/health_connect_reporter.dart';
 import 'package:health_connect_reporter/model/availability.dart';
 import 'package:health_connect_reporter/model/decorator/platform.dart';
 import 'package:health_connect_reporter/model/permission.dart';
+import 'package:health_connect_reporter/model/time_group.dart';
+import 'package:health_connect_reporter/model/time_range.dart';
+import 'package:health_connect_reporter/model/type/aggregation.dart';
 import 'package:health_connect_reporter/model/type/feature.dart';
 import 'package:health_connect_reporter/model/type/health_type.dart';
 
@@ -36,6 +39,7 @@ void main() {
       });
 
       test('every_other_method_throws_unsupported_error', () {
+        final range = TimeRange(startTimestamp: 0, endTimestamp: 1);
         final methods = <String, Future<Object?> Function()>{
           'requestPermissions': () => HealthConnectReporter.requestPermissions(
               Permission.of([HealthType.steps])),
@@ -45,6 +49,17 @@ void main() {
               HealthConnectReporter.isFeatureAvailable(Feature.skinTemperature),
           'openSettings': HealthConnectReporter.openSettings,
           'openInstall': HealthConnectReporter.openInstall,
+          'read': () => HealthConnectReporter.read(HealthType.steps, range),
+          'readPage': () =>
+              HealthConnectReporter.readPage(HealthType.steps, range),
+          'readById': () =>
+              HealthConnectReporter.readById(HealthType.steps, 'id-1'),
+          'aggregate': () => HealthConnectReporter.aggregate(
+              Aggregation.stepsCountTotal, range),
+          'aggregateGroups': () => HealthConnectReporter.aggregateGroups(
+              {Aggregation.stepsCountTotal},
+              range,
+              TimeGroupDuration(durationMillis: 60000)),
         };
         for (final entry in methods.entries) {
           expect(entry.value, throwsUnsupportedError, reason: entry.key);

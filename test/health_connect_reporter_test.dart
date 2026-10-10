@@ -6,7 +6,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:health_connect_reporter/exceptions.dart';
 import 'package:health_connect_reporter/health_connect_reporter.dart';
+import 'package:health_connect_reporter/model/aggregate.dart';
 import 'package:health_connect_reporter/model/availability.dart';
+import 'package:health_connect_reporter/model/data_origin.dart';
+import 'package:health_connect_reporter/model/payload/sample.dart';
+import 'package:health_connect_reporter/model/payload/steps.dart';
+import 'package:health_connect_reporter/model/payload/weight.dart';
+import 'package:health_connect_reporter/model/time_group.dart';
+import 'package:health_connect_reporter/model/time_range.dart';
+import 'package:health_connect_reporter/model/type/aggregation.dart';
+import 'package:health_connect_reporter/model/type/ordering.dart';
+import 'package:health_connect_reporter/model/type/time_group_unit.dart';
 import 'package:health_connect_reporter/model/permission.dart';
 import 'package:health_connect_reporter/model/type/access_type.dart';
 import 'package:health_connect_reporter/model/type/feature.dart';
@@ -157,6 +167,154 @@ void main() {
       expect(await HealthConnectReporter.openSettings(), isTrue);
       expect(await HealthConnectReporter.openInstall(), isTrue);
       expect(calls.keys, ['openSettings', 'openInstall']);
+    });
+  });
+
+  group('reader', () {
+    final range = TimeRange.fromJson(fixtures.timeRange);
+    final origins = {const DataOrigin(packageName: 'com.example')};
+    final originMaps = [fixtures.dataOrigin];
+
+    test('read_sends_every_argument_and_parses_mixed_samples', () async {
+      replies['read'] = jsonEncode([fixtures.steps, fixtures.weight]);
+
+      final samples = await HealthConnectReporter.read(HealthType.steps, range,
+          ordering: Ordering.ascending, limit: 10, origins: origins);
+
+      expect(samples.map((e) => e.runtimeType), [Steps, Weight]);
+      expect(samples.first, Sample.factory(fixtures.steps));
+      expect(calls['read'], {
+        'type': 'steps',
+        'range': fixtures.timeRange,
+        'ordering': 'ASCENDING',
+        'limit': 10,
+        'origins': originMaps,
+      });
+    });
+
+    test('read_defaults_to_newest_first_from_every_app', () async {
+      replies['read'] = '[]';
+
+      expect(
+          await HealthConnectReporter.read(HealthType.weight, range), isEmpty);
+      expect(calls['read'], {
+        'type': 'weight',
+        'range': fixtures.timeRange,
+        'ordering': 'DESCENDING',
+        'origins': [],
+      });
+    });
+
+    test('read_of_an_unknown_sample_type_throws_invalid_value', () async {
+      replies['read'] = jsonEncode([
+        {...fixtures.steps, 'type': 'steps_per_hour'}
+      ]);
+
+      expect(HealthConnectReporter.read(HealthType.steps, range),
+          throwsA(isA<InvalidValueException>()));
+    });
+
+    test('read_page_sends_the_page_and_parses_its_token', () async {
+      replies['readPage'] = jsonEncode(fixtures.page);
+
+      final page = await HealthConnectReporter.readPage(HealthType.steps, range,
+          pageSize: 1, pageToken: 'token');
+
+      expect(page.items, [Sample.factory(fixtures.steps)]);
+      expect(page.nextPageToken, 'next');
+      expect(calls['readPage'], {
+        'type': 'steps',
+        'range': fixtures.timeRange,
+        'pageSize': 1,
+        'pageToken': 'token',
+        'ordering': 'DESCENDING',
+        'origins': [],
+      });
+    });
+
+    test('read_page_defaults_to_the_library_page_size', () async {
+      replies['readPage'] = '{"items":[]}';
+
+      final page = await HealthConnectReporter.readPage(HealthType.steps, range,
+          ordering: Ordering.ascending, origins: origins);
+
+      expect(page.items, isEmpty);
+      expect(page.nextPageToken, isNull);
+      expect(calls['readPage'], {
+        'type': 'steps',
+        'range': fixtures.timeRange,
+        'pageSize': 1000,
+        'ordering': 'ASCENDING',
+        'origins': originMaps,
+      });
+    });
+
+    test('read_by_id_sends_the_type_and_id', () async {
+      replies['readById'] = jsonEncode(fixtures.stepsMetadata);
+
+      final sample =
+          await HealthConnectReporter.readById(HealthType.steps, 'id-1');
+
+      expect(sample.id, 'id-1');
+      expect(calls['readById'], {'type': 'steps', 'id': 'id-1'});
+    });
+
+    test('aggregate_sends_the_kotlin_name_and_parses_the_value', () async {
+      replies['aggregate'] = jsonEncode(fixtures.aggregate);
+
+      final aggregate = await HealthConnectReporter.aggregate(
+          Aggregation.stepsCountTotal, range,
+          origins: origins);
+
+      expect(aggregate, Aggregate.fromJson(fixtures.aggregate));
+      expect(calls['aggregate'], {
+        'aggregation': 'STEPS_COUNT_TOTAL',
+        'range': fixtures.timeRange,
+        'origins': originMaps,
+      });
+    });
+
+    test('aggregate_without_data_has_no_value', () async {
+      replies['aggregate'] = jsonEncode(fixtures.aggregateEmpty);
+
+      final aggregate = await HealthConnectReporter.aggregate(
+          Aggregation.stepsCountTotal, range);
+
+      expect(aggregate.value, isNull);
+    });
+
+    test('aggregate_groups_sends_the_group_and_parses_every_bucket', () async {
+      replies['aggregateGroups'] =
+          jsonEncode([fixtures.aggregate, fixtures.aggregateEmpty]);
+
+      final aggregates = await HealthConnectReporter.aggregateGroups(
+          {Aggregation.stepsCountTotal, Aggregation.heartRateBpmAvg},
+          range,
+          TimeGroupPeriod(unit: TimeGroupUnit.daily, zoneId: 'Europe/Berlin'));
+
+      expect(aggregates.map((e) => e.value), [1.0, null]);
+      expect(calls['aggregateGroups'], {
+        'aggregations': ['STEPS_COUNT_TOTAL', 'HEART_RATE_BPM_AVG'],
+        'range': fixtures.timeRange,
+        'group': {
+          'type': 'period',
+          'unit': 'DAILY',
+          'count': 1,
+          'zoneId': 'Europe/Berlin'
+        },
+        'origins': [],
+      });
+    });
+
+    test('reader_passes_platform_errors_on', () async {
+      replies['read'] = PlatformException(
+          code: 'read', message: 'no permission', details: 'NotAuthorized');
+
+      expect(
+          HealthConnectReporter.read(HealthType.steps, range),
+          throwsA(isA<PlatformException>()
+              .having((e) => e.code, 'code', 'read')
+              .having((e) => e.details, 'details', 'NotAuthorized')));
     });
   });
 }

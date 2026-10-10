@@ -6,9 +6,19 @@ import android.content.Intent
 import android.net.Uri
 import com.kvs.healthconnectreporter.HealthConnectException
 import com.kvs.healthconnectreporter.HealthConnectReporter
+import com.kvs.healthconnectreporter.model.Aggregate
 import com.kvs.healthconnectreporter.model.Availability
+import com.kvs.healthconnectreporter.model.DataOrigin
+import com.kvs.healthconnectreporter.model.Ordering
+import com.kvs.healthconnectreporter.model.Page
 import com.kvs.healthconnectreporter.model.Permission
+import com.kvs.healthconnectreporter.model.TimeGroup
+import com.kvs.healthconnectreporter.model.TimeRange
+import com.kvs.healthconnectreporter.model.payload.Sample
+import com.kvs.healthconnectreporter.model.type.Aggregation
 import com.kvs.healthconnectreporter.model.type.Feature
+import com.kvs.healthconnectreporter.model.type.HealthType
+import com.kvs.healthconnectreporter.service.aggregate
 
 /**
  * [HealthConnect] over one **HealthConnectReporter**.
@@ -45,6 +55,41 @@ class ReporterHealthConnect(
     override suspend fun isFeatureAvailable(feature: Feature): Boolean = reporter.manager.isFeatureAvailable(feature)
 
     override fun openSettings() = start(reporter.manager.settingsIntent(context))
+
+    override suspend fun read(
+        type: HealthType,
+        range: TimeRange,
+        ordering: Ordering,
+        limit: Int?,
+        origins: Set<DataOrigin>,
+    ): List<Sample> = reporter.reader.read(type, range, ordering, limit, origins)
+
+    override suspend fun readPage(
+        type: HealthType,
+        range: TimeRange,
+        pageSize: Int,
+        pageToken: String?,
+        ordering: Ordering,
+        origins: Set<DataOrigin>,
+    ): Page = reporter.reader.readPage(type, range, pageSize, pageToken, ordering, origins)
+
+    override suspend fun readById(
+        type: HealthType,
+        id: String,
+    ): Sample = reporter.reader.read(type, id)
+
+    override suspend fun aggregate(
+        aggregation: Aggregation,
+        range: TimeRange,
+        origins: Set<DataOrigin>,
+    ): Aggregate = reporter.reader.aggregate(aggregation, range, origins)
+
+    override suspend fun aggregateGroups(
+        aggregations: Set<Aggregation>,
+        range: TimeRange,
+        group: TimeGroup,
+        origins: Set<DataOrigin>,
+    ): List<Aggregate> = reporter.reader.aggregate(aggregations, range, group, origins)
 
     /**
      * The Google Play page of Health Connect, as **HealthConnectManager.installIntent** builds it: the manager needs

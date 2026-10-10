@@ -20,6 +20,11 @@ enum class Method {
     isFeatureAvailable,
     openSettings,
     openInstall,
+    read,
+    readPage,
+    readById,
+    aggregate,
+    aggregateGroups,
 }
 
 /**
@@ -56,6 +61,7 @@ class HealthConnectDispatcher(
                 else -> throw HealthConnectException.InvalidValue("Invalid arguments: $arguments")
             }
 
+    @Suppress("CyclomaticComplexMethod")
     private suspend fun reply(
         method: Method,
         arguments: Map<String, Any?>,
@@ -88,5 +94,51 @@ class HealthConnectDispatcher(
             Method.openInstall -> {
                 health.openInstall().let { true }
             }
+
+            Method.read -> {
+                health
+                    .read(
+                        arguments.healthType(),
+                        arguments.range(),
+                        arguments.ordering(),
+                        arguments.optionalInt("limit"),
+                        arguments.origins(),
+                    ).json
+            }
+
+            Method.readPage -> {
+                health
+                    .readPage(
+                        arguments.healthType(),
+                        arguments.range(),
+                        arguments.optionalInt("pageSize") ?: DEFAULT_PAGE_SIZE,
+                        arguments.optionalString("pageToken"),
+                        arguments.ordering(),
+                        arguments.origins(),
+                    ).json
+            }
+
+            Method.readById -> {
+                health.readById(arguments.healthType(), arguments.string("id")).json
+            }
+
+            Method.aggregate -> {
+                health.aggregate(arguments.aggregation(), arguments.range(), arguments.origins()).json
+            }
+
+            Method.aggregateGroups -> {
+                health
+                    .aggregateGroups(
+                        arguments.aggregations(),
+                        arguments.range(),
+                        arguments.timeGroup(),
+                        arguments.origins(),
+                    ).json
+            }
         }
+
+    private companion object {
+        /** HealthConnectReader's default page size */
+        const val DEFAULT_PAGE_SIZE = 1000
+    }
 }

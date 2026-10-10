@@ -2,6 +2,7 @@ package com.kvs.health_connect_reporter
 
 import com.kvs.healthconnectreporter.HealthConnectException
 import com.kvs.healthconnectreporter.model.Availability
+import com.kvs.healthconnectreporter.model.Payload
 import com.kvs.healthconnectreporter.model.Permission
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -11,6 +12,10 @@ import kotlinx.serialization.json.Json
 /** **String** the availability's JSON value, e.g. `"available"` */
 internal val Availability.json: String
     get() = Json.encodeToString(Availability.serializer(), this)
+
+/** **String** JSON array of the payloads' JSON */
+internal val List<Payload>.json: String
+    get() = joinToString(",", "[", "]") { it.json }
 
 /** **String** JSON array of the permissions, e.g. `[{"type":"data","healthType":"STEPS","access":"READ"}]` */
 internal val Set<Permission>.json: String

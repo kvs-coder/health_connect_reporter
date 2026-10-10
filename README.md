@@ -8,7 +8,7 @@ A Flutter plugin that reads, writes and observes [Android Health Connect](https:
 
 Its siblings are [health_kit_reporter](https://pub.dev/packages/health_kit_reporter) for Apple Health and [samsung_health_reporter](https://pub.dev/packages/samsung_health_reporter) for Samsung Health.
 
-> **Status**: under construction. Every HealthConnectReporter call exists; the example app follows (see `AGENTS.md`). Nothing is released yet.
+> **Status**: every HealthConnectReporter call exists; nothing is released yet.
 
 ## Requirements
 
@@ -198,6 +198,17 @@ await Workmanager().registerPeriodicTask('health-sync', 'health-sync',
 ```
 
 Errors arrive as `PlatformException`s whose `code` is the method name and whose `details` name the error: `NotAuthorized`, `InvalidType`, `InvalidValue`, `NotAvailable`, `AnchorExpired` or `Platform`.
+
+## Example
+
+`example/` lists every plugin method, grouped like the library (Manager, Reader, Aggregates, Writer, Observer); tap a row to run it. Its manifest declares every health permission, the permissions-rationale activity and the `VIEW_PERMISSION_USAGE` alias, so it doubles as a setup reference.
+
+`example/integration_test/catalog_test.dart` runs every row on an Android 14+ phone. Grant the permissions once from the app's `requestPermissions` row, then:
+
+```bash
+cd example
+flutter test integration_test --no-uninstall -d <device-id>
+```
 
 ## License
 

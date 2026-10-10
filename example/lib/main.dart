@@ -1,34 +1,49 @@
 import 'package:flutter/material.dart';
-import 'package:health_connect_reporter/health_connect_reporter.dart';
-import 'package:health_connect_reporter/model/availability.dart';
 
-void main() => runApp(const DemoApp());
+import 'demo/demo_page.dart';
 
-/// Shows whether Health Connect is available; the demo catalog follows with the services.
-class DemoApp extends StatelessWidget {
-  const DemoApp({
-    super.key,
-    this.availability = HealthConnectReporter.availability,
-  });
+void main() => runApp(const ExampleApp());
 
-  /// The availability check, replaced in tests
-  final Future<Availability> Function() availability;
+class ExampleApp extends StatelessWidget {
+  const ExampleApp({super.key});
 
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'HealthConnectReporter',
-    home: Scaffold(
-      appBar: AppBar(title: const Text('HealthConnectReporter')),
-      body: Center(
-        child: FutureBuilder<Availability>(
-          future: availability(),
-          builder: (context, snapshot) => Text(
-            snapshot.hasError
-                ? 'Error: ${snapshot.error}'
-                : 'Health Connect: ${snapshot.data?.name ?? '…'}',
-          ),
+  static ThemeData _theme(Brightness brightness) {
+    final colors = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF1A73E8),
+      brightness: brightness,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colors,
+      scaffoldBackgroundColor: colors.surfaceContainerLowest,
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: colors.surfaceContainerLow,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      chipTheme: ChipThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: colors.surfaceContainerHigh,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
         ),
       ),
-    ),
-  );
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'HealthConnectReporter',
+      debugShowCheckedModeBanner: false,
+      theme: _theme(Brightness.light),
+      darkTheme: _theme(Brightness.dark),
+      home: const DemoPage(),
+    );
+  }
 }

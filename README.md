@@ -19,7 +19,7 @@ Its siblings are [health_kit_reporter](https://pub.dev/packages/health_kit_repor
 
 ```yaml
 dependencies:
-  health_connect_reporter: ^0.0.0 # x-release-please-version
+  health_connect_reporter: ^1.0.0 # x-release-please-version
 ```
 
 The plugin resolves HealthConnectReporter from JitPack, so add the repository to `android/build.gradle.kts`:

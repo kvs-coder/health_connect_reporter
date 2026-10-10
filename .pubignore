@@ -1,0 +1,18 @@
+# pub reads this file instead of .gitignore in this directory, so it repeats .gitignore
+.DS_Store
+.dart_tool/
+.idea/
+*.iml
+
+build/
+coverage/
+pubspec.lock
+ISSUE-*.md
+
+# Repository conventions and architecture, not needed by package users
+AGENTS.md
+CLAUDE.md
+doc/
+
+# Kotlin unit tests run in CI, not in apps
+android/src/test/

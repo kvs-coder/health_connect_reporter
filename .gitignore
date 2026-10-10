@@ -1,0 +1,11 @@
+.DS_Store
+.dart_tool/
+.idea/
+*.iml
+
+build/
+coverage/
+pubspec.lock
+
+# Local task notes, not for the repository
+ISSUE-*.md

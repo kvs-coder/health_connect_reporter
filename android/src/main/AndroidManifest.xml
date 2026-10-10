@@ -1,0 +1,3 @@
+<!-- HealthConnectReporter's manifest adds the <queries> entry for the Health Connect app; the consuming app
+     declares the health permissions it requests (see README). -->
+<manifest />

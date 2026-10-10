@@ -1,0 +1,31 @@
+name: health_connect_reporter
+description: Reads, writes and observes Android Health Connect data, wrapping the Kotlin library HealthConnectReporter.
+version: 0.0.0
+homepage: https://github.com/kvs-coder/health_connect_reporter
+repository: https://github.com/kvs-coder/health_connect_reporter
+issue_tracker: https://github.com/kvs-coder/health_connect_reporter/issues
+topics:
+  - health
+  - health-connect
+  - android
+  - fitness
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.kvs.health_connect_reporter
+        pluginClass: HealthConnectReporterPlugin

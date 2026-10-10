@@ -22,6 +22,14 @@ The architecture of the Flutter plugin `health_connect_reporter`, following the 
 2. **Testability**: every Dart method is tested against mocked channels, every Kotlin path against a mocked `HealthConnect`.
 3. **Parity**: shapes and names match samsung_health_reporter wherever Health Connect allows it.
 
+**Stakeholders**
+
+| Stakeholder | Expectation |
+| :--- | :--- |
+| Flutter app developers | Typed Dart models and one call per library method; setup no harder than a manifest |
+| Maintainer | Changes in HealthConnectReporter map 1:1 onto the plugin; green gates before every release |
+| Google Play review | Declared permissions, a privacy policy screen and the permission-usage alias |
+
 ## 2. Architecture Constraints
 
 | Constraint | Consequence |
@@ -66,6 +74,113 @@ flowchart LR
 
 ## 5. Building Block View
 
+### Level 1
+
+```mermaid
+flowchart TB
+    subgraph Dart["Dart (lib/)"]
+        api["HealthConnectReporter<br/>static API"]
+        models["Models<br/>payloads, types, sealed models"]
+        deco["decorator/<br/>platform, parse helpers, subscribe"]
+        api --> models
+        api --> deco
+    end
+    subgraph Kotlin["Kotlin (android/src/main/kotlin)"]
+        plugin["HealthConnectReporterPlugin"]
+        disp["HealthConnectDispatcher"]
+        hc["HealthConnect<br/>(interface)"]
+        rep["ReporterHealthConnect"]
+        plugin --> disp
+        disp --> hc
+        rep -. implements .-> hc
+    end
+    lib["HealthConnectReporter 1.0.0"]
+    api -- "MethodChannel" --> plugin
+    deco -- "EventChannel per observe" --> plugin
+    rep --> lib
+```
+
+### Level 2: Kotlin bridge
+
+```mermaid
+flowchart LR
+    plugin["HealthConnectReporterPlugin<br/>FlutterPlugin + ActivityAware"]
+    disp["HealthConnectDispatcher<br/>Method enum, MainScope"]
+    maps["Extensions+Map<br/>argument readers, make(from:)"]
+    json["Extensions+Payload<br/>JSON replies, error kinds"]
+    perm["Extensions+Permission<br/>permission features"]
+    launcher["PermissionLauncher<br/>ActivityResultListener"]
+    handler["ObserveStreamHandler<br/>per subscription"]
+    rep["ReporterHealthConnect<br/>lazy HealthConnectReporter"]
+
+    plugin -- "method channel handler" --> disp
+    plugin -- "result listener on the activity binding" --> launcher
+    plugin -- "opens / closes event channels" --> handler
+    disp --> maps
+    disp --> json
+    disp -- "observe" --> handler
+    disp --> rep
+    rep --> launcher
+    rep --> perm
+```
+
+### Level 2: Dart models
+
+```mermaid
+classDiagram
+    class Payload {
+        <<mixin>>
+        map
+        ==()
+        hashCode
+    }
+    class Sample~Harmonized~ {
+        <<abstract>>
+        startTimestamp
+        endTimestamp
+        harmonized
+        id
+        clientRecordId
+        clientRecordVersion
+        healthType
+        factory(json)$
+    }
+    class WritableSample~Harmonized~ {
+        <<abstract>>
+    }
+    class HeartRate
+    class HeartRateHarmonized
+    class IntermenstrualBleeding
+    class Permission {
+        <<sealed>>
+        factory(json)$
+        of(types, access)$
+    }
+    class TimeGroup {
+        <<sealed>>
+    }
+    class ChangeSet
+    class Anchor
+    class Page
+
+    Payload <|.. Sample
+    Sample <|-- WritableSample
+    WritableSample <|-- HeartRate : 41 payloads
+    WritableSample <|-- IntermenstrualBleeding : harmonized Null
+    HeartRate *-- HeartRateHarmonized
+    Payload <|.. Permission
+    Payload <|.. TimeGroup
+    Payload <|.. ChangeSet
+    Payload <|.. Page
+    ChangeSet *-- Anchor
+    ChangeSet o-- Sample : upserted
+    Page o-- Sample : items
+```
+
+`Sample.factory` picks the payload by the `type` discriminator (`HealthType.identifier`); `Permission`, `TimeGroup`, `CompletionGoal` and `PerformanceTarget` do the same by their own `type`. Enums implement `ValueEnum` with the Kotlin name as `value`.
+
+### Blocks
+
 | Block | Where | Responsibility |
 | :--- | :--- | :--- |
 | `HealthConnectReporter` | `lib/health_connect_reporter.dart` | Static Dart API; Android check before any channel call. |
@@ -83,6 +198,56 @@ flowchart LR
 A catalog of every method (BLoC on plain streams, no packages) and `integration_test/catalog_test.dart`, which runs every row on a phone. Its manifest is the reference setup: every health permission, the rationale activity and the usage alias.
 
 ## 6. Runtime View
+
+### One-shot call: `read`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Flutter app
+    participant Api as HealthConnectReporter (Dart)
+    participant Disp as HealthConnectDispatcher
+    participant Rep as ReporterHealthConnect
+    participant Lib as HealthConnectReporter (library)
+
+    App->>Api: read(type, range, ordering, limit, origins)
+    Api->>Api: requirePlatform(android)
+    Api->>Disp: invokeMethod('read', {type, range: map, ordering, limit, origins: [map]})
+    Disp->>Disp: launch in MainScope, read arguments (TimeRange.make, DataOrigin.make)
+    Disp->>Rep: read(...)
+    Rep->>Lib: reporter.reader.read(...) (connects on first use)
+    Lib-->>Rep: List<Sample>
+    Rep-->>Disp: List<Sample>
+    Disp-->>Api: result.success(JSON array)
+    Api->>Api: Sample.collect(jsonDecode(json))
+    Api-->>App: List<Sample>
+```
+
+### Write: `insert`, then `update`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Flutter app
+    participant Api as HealthConnectReporter (Dart)
+    participant Disp as HealthConnectDispatcher
+    participant Lib as HealthConnectWriter (library)
+
+    App->>Api: insert([Steps(clientRecordId: null, ...)])
+    Api->>Disp: invokeMethod('insert', {samples: [sample.map]})
+    Disp->>Disp: drop nulls, Steps.make(map) per type
+    Disp->>Lib: insert(samples)
+    Lib->>Lib: random clientRecordId where missing
+    Lib-->>Disp: samples with id and clientRecordId
+    Disp-->>Api: JSON array
+    Api-->>App: List<WritableSample>
+    App->>Api: update([Steps(clientRecordId, clientRecordVersion + 1, ...)])
+    Api->>Disp: invokeMethod('update', {samples: [map]})
+    Disp->>Lib: update(samples)
+    Lib->>Lib: upsert by clientRecordId, else update by id
+    Lib-->>Disp: Unit
+    Disp-->>Api: true
+```
 
 ### Permission screen: `requestPermissions`
 
@@ -156,13 +321,38 @@ flowchart TB
     pubdev["pub.dev"] -. "build: health_connect_reporter" .-> dart
 ```
 
-**Delivery pipeline** (`.github/workflows/`): `ci.yml` (release guard, analyze, test + coverage ≥ 90 %, example test, Gradle build, Kotlin tests, ktlint) on every PR and push; `release.yml` keeps a release-please PR open and, once merged and tagged `vX.Y.Z`, starts `publish.yml`, which publishes to pub.dev through GitHub's OIDC token.
+**Delivery pipeline** (`.github/workflows/`):
+
+```mermaid
+flowchart LR
+    push["push / PR to master"] --> ci["ci.yml<br/>Version / Changelog · Analyze / Test (coverage ≥ 90 %)<br/>· Android (Gradle build, Kotlin tests, ktlint)"]
+    push --> rel["release.yml<br/>release-please keeps a release PR open"]
+    rel -- "merge release PR → tag vX.Y.Z" --> pub["publish.yml<br/>OIDC → pub.dev"]
+    phone["Pixel / Android 14+ phone"] -. "manual: integration_test/catalog_test.dart" .-> ci
+```
+
+master is protected: pull requests, all three CI jobs, linear history, no force pushes.
 
 ## 8. Crosscutting Concepts
 
 - **JSON contract**: keys and value shapes follow the library exactly — timestamps epoch milliseconds, zone offsets seconds, one canonical unit per field, enums by Kotlin name or `@SerialName`, a sample's `type` = `HealthType.identifier`. Lists reply as JSON arrays; `readPage` replies `{"items":[...],"nextPageToken":"..."}`.
 - **Identity**: `id` names the stored record, `clientRecordId` / `clientRecordVersion` the app's own key and version; update upserts by client record id first, else by id; update and delete send the sample's `map` with all three.
 - **Errors**: every failure is a `PlatformException` — `code` the method name, `message` the library's message, `details` the kind as a `String`: `NotAuthorized`, `InvalidType`, `InvalidValue`, `NotAvailable`, `AnchorExpired` or `Platform`. Observe errors arrive on `onError` with code `observe`.
+```mermaid
+flowchart LR
+    ex["HealthConnectException"] --> k{"kind"}
+    k --> na["NotAuthorized"]
+    k --> it["InvalidType"]
+    k --> iv["InvalidValue"]
+    k --> nv["NotAvailable"]
+    k --> ae["AnchorExpired"]
+    k --> pl["Platform"]
+    other["any other Exception"] --> cls["its class name"]
+    na & it & iv & nv & ae & pl & cls --> pe["PlatformException<br/>code = method · message · details = kind"]
+    pe --> call["Future error"]
+    pe --> ev["observe: onError"]
+```
+
 - **Threads**: calls run in the plugin's `MainScope`; results and events are delivered on the platform thread.
 - **Connection**: `ReporterHealthConnect` creates the `HealthConnectReporter` on the first call that needs it and retries after a failure; `availability` and `openInstall` need none.
 - **Platform guard**: `availability` is `unavailable` outside Android; every other method throws `UnsupportedError` before any channel call.

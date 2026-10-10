@@ -1,6 +1,6 @@
 name: health_connect_reporter
 description: Reads, writes and observes Android Health Connect data, wrapping the Kotlin library HealthConnectReporter.
-version: 0.0.0
+version: 1.0.0
 homepage: https://github.com/kvs-coder/health_connect_reporter
 repository: https://github.com/kvs-coder/health_connect_reporter
 issue_tracker: https://github.com/kvs-coder/health_connect_reporter/issues

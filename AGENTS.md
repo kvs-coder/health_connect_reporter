@@ -41,6 +41,7 @@ Dart: HealthConnectReporter (lib/health_connect_reporter.dart, static methods)
 Kotlin: HealthConnectReporterPlugin (android/src/main/kotlin/com/kvs/health_connect_reporter/)
    ├──► HealthConnectDispatcher.kt   `Method` enum + dispatcher, one case per Dart method, in a plugin-owned MainScope
    ├──► ObserveStreamHandler.kt      one EventChannel.StreamHandler per observe subscription
+   ├──► PermissionLauncher.kt        the library's permission contract on the plugin's activity (result listener)
    ├──► HealthConnect.kt             the library calls the dispatcher makes (faked in unit tests)
    └──► ReporterHealthConnect.kt     HealthConnect over one lazily connected HealthConnectReporter (JitPack)
             │
@@ -63,7 +64,7 @@ lib/
     └── type/<type_name>.dart         (HealthType, Aggregation, Feature and the value enums, by Kotlin name)
 
 android/                              (build.gradle.kts: minSdk 26, HealthConnectReporter from JitPack; .editorconfig)
-├── src/main/kotlin/com/kvs/health_connect_reporter/  (plugin, dispatcher, stream handler, Extensions+Map / +Payload)
+├── src/main/kotlin/com/kvs/health_connect_reporter/  (plugin, dispatcher, stream handler, permission launcher, Extensions+Map / +Payload / +Permission)
 └── src/test/kotlin/...               (dispatcher and stream handler unit tests against a mocked HealthConnect)
 
 test/
@@ -163,7 +164,7 @@ example/
 | Category | Target | Package | Purpose & Scope |
 | :--- | :--- | :--- | :--- |
 | **Model Tests** | `lib/model/**` | `flutter_test` | Parse fixtures shaped like the library's JSON; `map` → `fromJson` round trips; minimal JSON parses. |
-| **API Tests** | `lib/samsung_health_reporter.dart` | `flutter_test` | Every method against a mocked `MethodChannel` / `EventChannel`: arguments sent, replies and errors parsed; Android only. |
+| **API Tests** | `lib/health_connect_reporter.dart` | `flutter_test` | Every method against a mocked `MethodChannel` / `EventChannel`: arguments sent, replies and errors parsed; Android only. |
 | **Kotlin Unit** | `android/src/main` | JUnit 5, MockK | Dispatcher arguments, replies and error codes, observe channels, stream handler listening and cancelling; run through the example's Gradle project. |
 | **Integration** | Kotlin dispatcher + Health Connect | `integration_test` | `example/integration_test/catalog_test.dart` runs every row on an Android 14+ phone or emulator; grant the permissions first. |
 | **Build** | `android/`, `example/android` | `flutter build apk` | The example builds, resolving HealthConnectReporter from JitPack. |

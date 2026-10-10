@@ -4,7 +4,7 @@ Date: 10.10.2026
 
 ## Status
 
-Accepted.
+Accepted. Ships with 1.0.0.
 
 ## Context
 

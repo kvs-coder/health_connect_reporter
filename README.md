@@ -8,7 +8,7 @@ A Flutter plugin that reads, writes and observes [Android Health Connect](https:
 
 Its siblings are [health_kit_reporter](https://pub.dev/packages/health_kit_reporter) for Apple Health and [samsung_health_reporter](https://pub.dev/packages/samsung_health_reporter) for Samsung Health.
 
-> **Status**: under construction. `availability`, the permission calls and the reader exist; the writer and observer follow (see `AGENTS.md`). Nothing is released yet.
+> **Status**: under construction. `availability`, the permission calls, the reader and the writer exist; the observer follows (see `AGENTS.md`). Nothing is released yet.
 
 ## Requirements
 
@@ -113,6 +113,40 @@ final daily = await HealthConnectReporter.aggregateGroups(
 ```
 
 Values come in the library's canonical units (kg, kcal, m, m/s, W, mmHg, °C, L, mmol/L, percent; durations in milliseconds). Without `PermissionReadHistory()` Health Connect returns data from 30 days before the first grant onwards, and a type that needs a missing feature fails with `NotAvailable`.
+
+### Write
+
+Every Health Connect record is writable by the app that holds its write permission. A sample without a `clientRecordId` gets a random one on insert, so you can update and delete it later without reading it back.
+
+```dart
+final now = DateTime.now().millisecondsSinceEpoch;
+final inserted = await HealthConnectReporter.insert([
+  Steps(
+    startTimestamp: now - 3600000,
+    endTimestamp: now,
+    harmonized: const StepsHarmonized(count: 1200),
+    clientRecordId: 'steps-2026-10-10-09',
+    clientRecordVersion: 1,
+  ),
+  Weight(startTimestamp: now, harmonized: const WeightHarmonized(weight: 72.5)),
+]);
+print(inserted.map((e) => e.id)); // Health Connect ids, in input order
+
+// a higher clientRecordVersion replaces the record with that clientRecordId
+await HealthConnectReporter.update([
+  Steps(
+    startTimestamp: now - 3600000,
+    endTimestamp: now,
+    harmonized: const StepsHarmonized(count: 1300),
+    clientRecordId: 'steps-2026-10-10-09',
+    clientRecordVersion: 2,
+  ),
+]);
+
+await HealthConnectReporter.delete(inserted.last); // by id, else by clientRecordId
+await HealthConnectReporter.deleteByIds(HealthType.steps, clientRecordIds: ['steps-2026-10-10-09']);
+await HealthConnectReporter.deleteByRange(HealthType.weight, TimeRange.lastDays(1));
+```
 
 Errors arrive as `PlatformException`s whose `code` is the method name and whose `details` name the error: `NotAuthorized`, `InvalidType`, `InvalidValue`, `NotAvailable`, `AnchorExpired` or `Platform`.
 

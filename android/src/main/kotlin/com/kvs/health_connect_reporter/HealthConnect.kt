@@ -9,6 +9,7 @@ import com.kvs.healthconnectreporter.model.Permission
 import com.kvs.healthconnectreporter.model.TimeGroup
 import com.kvs.healthconnectreporter.model.TimeRange
 import com.kvs.healthconnectreporter.model.payload.Sample
+import com.kvs.healthconnectreporter.model.payload.WritableSample
 import com.kvs.healthconnectreporter.model.type.Aggregation
 import com.kvs.healthconnectreporter.model.type.Feature
 import com.kvs.healthconnectreporter.model.type.HealthType
@@ -68,4 +69,21 @@ interface HealthConnect {
         group: TimeGroup,
         origins: Set<DataOrigin>,
     ): List<Aggregate>
+
+    suspend fun insert(samples: List<WritableSample>): List<WritableSample>
+
+    suspend fun update(samples: List<WritableSample>)
+
+    suspend fun delete(sample: WritableSample)
+
+    suspend fun deleteByIds(
+        type: HealthType,
+        ids: List<String>,
+        clientRecordIds: List<String>,
+    )
+
+    suspend fun deleteByRange(
+        type: HealthType,
+        range: TimeRange,
+    )
 }

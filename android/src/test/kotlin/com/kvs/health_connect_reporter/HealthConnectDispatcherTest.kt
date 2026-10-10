@@ -9,8 +9,10 @@ import com.kvs.healthconnectreporter.model.Page
 import com.kvs.healthconnectreporter.model.Permission
 import com.kvs.healthconnectreporter.model.TimeGroup
 import com.kvs.healthconnectreporter.model.TimeRange
+import com.kvs.healthconnectreporter.model.payload.IntermenstrualBleeding
 import com.kvs.healthconnectreporter.model.payload.Steps
 import com.kvs.healthconnectreporter.model.payload.Weight
+import com.kvs.healthconnectreporter.model.payload.WritableSample
 import com.kvs.healthconnectreporter.model.type.AccessType
 import com.kvs.healthconnectreporter.model.type.Aggregation
 import com.kvs.healthconnectreporter.model.type.Feature
@@ -24,10 +26,18 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
+import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -288,6 +298,109 @@ class HealthConnectDispatcherTest {
             assertEquals("InvalidValue", call(method, arguments).error?.third, "$method $arguments")
         }
         assertEquals("InvalidType", call("read", mapOf("type" to "STEPS", "range" to rangeMap)).error?.third)
+    }
+
+    /** The value Dart sends for a JSON element: maps, lists, strings, bools, Longs and Doubles */
+    private val JsonElement.dart: Any?
+        get() =
+            when (this) {
+                is JsonNull -> {
+                    null
+                }
+
+                is JsonObject -> {
+                    mapValues { it.value.dart }
+                }
+
+                is JsonArray -> {
+                    map { it.dart }
+                }
+
+                is JsonPrimitive -> {
+                    when {
+                        isString -> content
+                        booleanOrNull != null -> booleanOrNull
+                        content.any { it == '.' || it == 'E' } -> content.toDouble()
+                        else -> content.toLong()
+                    }
+                }
+            }
+
+    /** Dart's `map` of every fixture sample: the library's keys, nulls for the unset fields */
+    private val sampleMaps =
+        sampleJson.map { json ->
+            @Suppress("UNCHECKED_CAST")
+            (Json.parseToJsonElement(json).dart as Map<String, Any?>) + mapOf("id" to null, "dataOrigin" to null)
+        }
+
+    @Test
+    fun insert_reads_a_map_of_every_type_with_make_and_replies_the_inserted() {
+        val inserted = slot<List<WritableSample>>()
+        coEvery { health.insert(capture(inserted)) } answers { firstArg() }
+
+        val reply = call("insert", mapOf("samples" to sampleMaps))
+
+        assertEquals(HealthType.entries.toSet(), inserted.captured.map { it.healthType }.toSet())
+        assertEquals(sampleJson, inserted.captured.map { it.json })
+        assertEquals(sampleJson.joinToString(",", "[", "]"), reply.value)
+    }
+
+    @Test
+    fun update_and_delete_read_the_sample_maps_and_reply_true() {
+        val map =
+            mapOf("type" to "steps", "startTimestamp" to START, "endTimestamp" to END) +
+                mapOf("harmonized" to mapOf("count" to 1200), "clientRecordId" to "client-1", "id" to null)
+        coEvery { health.update(listOf(steps)) } just runs
+        coEvery { health.delete(steps) } just runs
+
+        assertEquals(true, call("update", mapOf("samples" to listOf(map))).value)
+        assertEquals(true, call("delete", mapOf("sample" to map)).value)
+        coVerify { health.update(listOf(steps)) }
+        coVerify { health.delete(steps) }
+    }
+
+    @Test
+    fun a_sample_without_values_ignores_its_null_harmonized_part() {
+        val bleeding = IntermenstrualBleeding(START)
+        coEvery { health.delete(bleeding) } just runs
+
+        val map = mapOf("type" to "intermenstrual_bleeding", "startTimestamp" to START, "harmonized" to null)
+        assertEquals(true, call("delete", mapOf("sample" to map)).value)
+    }
+
+    @Test
+    fun delete_by_ids_sends_both_lists_and_defaults_them_to_empty() {
+        coEvery { health.deleteByIds(HealthType.STEPS, listOf("id-1"), listOf("client-1")) } just runs
+        coEvery { health.deleteByIds(HealthType.WEIGHT, listOf("id-2"), emptyList()) } just runs
+
+        val both = mapOf("type" to "steps", "ids" to listOf("id-1"), "clientRecordIds" to listOf("client-1"))
+        assertEquals(true, call("deleteByIds", both).value)
+        assertEquals(true, call("deleteByIds", mapOf("type" to "weight", "ids" to listOf("id-2"))).value)
+    }
+
+    @Test
+    fun delete_by_range_sends_the_type_and_range() {
+        coEvery { health.deleteByRange(HealthType.STEPS, range) } just runs
+
+        assertEquals(true, call("deleteByRange", mapOf("type" to "steps", "range" to rangeMap)).value)
+        coVerify { health.deleteByRange(HealthType.STEPS, range) }
+    }
+
+    @Test
+    fun writer_rejects_invalid_samples() {
+        val invalid =
+            listOf(
+                "insert" to mapOf("samples" to listOf(mapOf("type" to "steps", "startTimestamp" to START))),
+                "insert" to mapOf("samples" to mapOf("type" to "steps")),
+                "update" to mapOf("samples" to listOf("steps")),
+                "delete" to mapOf("sample" to "steps"),
+                "deleteByIds" to mapOf("type" to "steps", "ids" to listOf(1)),
+                "deleteByRange" to mapOf("type" to "steps"),
+            )
+        invalid.forEach { (method, arguments) ->
+            assertEquals("InvalidValue", call(method, arguments).error?.third, "$method $arguments")
+        }
+        assertEquals("InvalidType", call("delete", mapOf("sample" to mapOf("type" to "mood"))).error?.third)
     }
 
     @Test

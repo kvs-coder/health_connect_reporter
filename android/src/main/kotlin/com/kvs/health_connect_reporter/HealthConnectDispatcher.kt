@@ -25,6 +25,11 @@ enum class Method {
     readById,
     aggregate,
     aggregateGroups,
+    insert,
+    update,
+    delete,
+    deleteByIds,
+    deleteByRange,
 }
 
 /**
@@ -134,6 +139,31 @@ class HealthConnectDispatcher(
                         arguments.timeGroup(),
                         arguments.origins(),
                     ).json
+            }
+
+            Method.insert -> {
+                health.insert(arguments.samples()).json
+            }
+
+            Method.update -> {
+                health.update(arguments.samples()).let { true }
+            }
+
+            Method.delete -> {
+                health.delete(arguments.map("sample").sample).let { true }
+            }
+
+            Method.deleteByIds -> {
+                health
+                    .deleteByIds(
+                        arguments.healthType(),
+                        arguments.optionalStrings("ids"),
+                        arguments.optionalStrings("clientRecordIds"),
+                    ).let { true }
+            }
+
+            Method.deleteByRange -> {
+                health.deleteByRange(arguments.healthType(), arguments.range()).let { true }
             }
         }
 

@@ -39,6 +39,11 @@ import 'model/type/ordering.dart';
 /// - [readById]
 /// - [aggregate]
 /// - [aggregateGroups]
+/// - [insert]
+/// - [update]
+/// - [delete]
+/// - [deleteByIds]
+/// - [deleteByRange]
 ///
 /// Health Connect is available only on Android: on any other platform
 /// [availability] returns [Availability.unavailable] and every other method
@@ -222,4 +227,54 @@ class HealthConnectReporter {
     });
     return Aggregate.collect(jsonDecode(json));
   }
+
+  /// Inserts [samples] of one or more types and returns them as inserted,
+  /// with their Health Connect [Sample.id], in input order.
+  /// A sample without a [Sample.clientRecordId] gets a random one,
+  /// so it can be updated and deleted later; one whose client record id
+  /// is stored already replaces that record unless its
+  /// [Sample.clientRecordVersion] is lower.
+  ///
+  /// Fails with `NotAuthorized` without the write permission and with
+  /// `InvalidValue` for a value Health Connect rejects.
+  ///
+  static Future<List<WritableSample>> insert(
+      List<WritableSample> samples) async {
+    final String json = await _methodChannel.invokeMethod(
+        'insert', {'samples': samples.map((e) => e.map).toList()});
+    return Sample.collect(jsonDecode(json)).cast<WritableSample>();
+  }
+
+  /// Replaces stored records: a sample with a [Sample.clientRecordId]
+  /// replaces the record with that client id unless its
+  /// [Sample.clientRecordVersion] is lower, any other the record
+  /// with its [Sample.id]. Fails with `InvalidValue` for a sample
+  /// with neither.
+  ///
+  static Future<bool> update(List<WritableSample> samples) =>
+      _status('update', {'samples': samples.map((e) => e.map).toList()});
+
+  /// Deletes a stored [sample] by its [Sample.id],
+  /// else by its [Sample.clientRecordId].
+  ///
+  static Future<bool> delete(WritableSample sample) =>
+      _status('delete', {'sample': sample.map});
+
+  /// Deletes records of a [type] by their Health Connect [ids] and
+  /// their [clientRecordIds], all or none.
+  /// Fails with `InvalidValue` when both are empty.
+  ///
+  static Future<bool> deleteByIds(HealthType type,
+          {List<String> ids = const [],
+          List<String> clientRecordIds = const []}) =>
+      _status('deleteByIds', {
+        'type': type.identifier,
+        'ids': ids,
+        'clientRecordIds': clientRecordIds,
+      });
+
+  /// Deletes the records of a [type] the app wrote in the [range].
+  ///
+  static Future<bool> deleteByRange(HealthType type, TimeRange range) =>
+      _status('deleteByRange', {'type': type.identifier, 'range': range.map});
 }

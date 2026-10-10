@@ -10,6 +10,7 @@ import 'package:health_connect_reporter/model/aggregate.dart';
 import 'package:health_connect_reporter/model/availability.dart';
 import 'package:health_connect_reporter/model/data_origin.dart';
 import 'package:health_connect_reporter/model/payload/sample.dart';
+import 'package:health_connect_reporter/model/payload/intermenstrual_bleeding.dart';
 import 'package:health_connect_reporter/model/payload/steps.dart';
 import 'package:health_connect_reporter/model/payload/weight.dart';
 import 'package:health_connect_reporter/model/time_group.dart';
@@ -315,6 +316,96 @@ void main() {
           throwsA(isA<PlatformException>()
               .having((e) => e.code, 'code', 'read')
               .having((e) => e.details, 'details', 'NotAuthorized')));
+    });
+  });
+
+  group('writer', () {
+    final steps = Steps.fromJson(fixtures.steps);
+    final range = TimeRange.fromJson(fixtures.timeRange);
+
+    test('insert_sends_every_sample_map_and_parses_the_inserted', () async {
+      final samples =
+          fixtures.samples.values.map(Sample.factory).cast<WritableSample>();
+      final inserted = fixtures.samples.values
+          .map((e) => {...e, 'id': 'id-${e['type']}'})
+          .toList();
+      replies['insert'] = jsonEncode(inserted);
+
+      final result = await HealthConnectReporter.insert(samples.toList());
+
+      expect(result.map((e) => e.id), inserted.map((e) => e['id']));
+      expect(result.map((e) => e.clientRecordId),
+          samples.map((e) => e.clientRecordId));
+      expect(calls['insert'], {
+        'samples': samples.map((e) => e.map).toList(),
+      });
+    });
+
+    test('update_and_delete_send_the_sample_identity', () async {
+      replies['update'] = true;
+      replies['delete'] = true;
+
+      expect(await HealthConnectReporter.update([steps]), isTrue);
+      expect(await HealthConnectReporter.delete(steps), isTrue);
+      expect(calls['update'], {
+        'samples': [steps.map]
+      });
+      expect(calls['delete'], {'sample': steps.map});
+      expect(calls['delete']['sample'], containsPair('id', null));
+      expect(calls['delete']['sample'],
+          containsPair('clientRecordId', 'client-steps'));
+      expect(calls['delete']['sample'], containsPair('clientRecordVersion', 1));
+    });
+
+    test('a_sample_without_values_sends_no_harmonized_part', () async {
+      replies['delete'] = true;
+
+      await HealthConnectReporter.delete(const IntermenstrualBleeding(
+          startTimestamp: fixtures.start, id: 'id-1'));
+
+      expect(calls['delete']['sample']['harmonized'], isNull);
+    });
+
+    test('delete_by_ids_sends_both_lists', () async {
+      replies['deleteByIds'] = true;
+
+      expect(
+          await HealthConnectReporter.deleteByIds(HealthType.steps,
+              ids: ['id-1'], clientRecordIds: ['client-1']),
+          isTrue);
+      expect(calls['deleteByIds'], {
+        'type': 'steps',
+        'ids': ['id-1'],
+        'clientRecordIds': ['client-1'],
+      });
+      await HealthConnectReporter.deleteByIds(HealthType.weight, ids: ['id-2']);
+      expect(calls['deleteByIds'], {
+        'type': 'weight',
+        'ids': ['id-2'],
+        'clientRecordIds': [],
+      });
+    });
+
+    test('delete_by_range_sends_the_type_and_range', () async {
+      replies['deleteByRange'] = true;
+
+      expect(await HealthConnectReporter.deleteByRange(HealthType.steps, range),
+          isTrue);
+      expect(calls['deleteByRange'],
+          {'type': 'steps', 'range': fixtures.timeRange});
+    });
+
+    test('writer_passes_platform_errors_on', () async {
+      replies['update'] = PlatformException(
+          code: 'update',
+          message: 'update needs an id or a clientRecordId',
+          details: 'InvalidValue');
+
+      expect(
+          HealthConnectReporter.update([steps]),
+          throwsA(isA<PlatformException>()
+              .having((e) => e.code, 'code', 'update')
+              .having((e) => e.details, 'details', 'InvalidValue')));
     });
   });
 }

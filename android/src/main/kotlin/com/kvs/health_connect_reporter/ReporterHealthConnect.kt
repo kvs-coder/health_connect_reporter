@@ -15,6 +15,7 @@ import com.kvs.healthconnectreporter.model.Permission
 import com.kvs.healthconnectreporter.model.TimeGroup
 import com.kvs.healthconnectreporter.model.TimeRange
 import com.kvs.healthconnectreporter.model.payload.Sample
+import com.kvs.healthconnectreporter.model.payload.WritableSample
 import com.kvs.healthconnectreporter.model.type.Aggregation
 import com.kvs.healthconnectreporter.model.type.Feature
 import com.kvs.healthconnectreporter.model.type.HealthType
@@ -90,6 +91,23 @@ class ReporterHealthConnect(
         group: TimeGroup,
         origins: Set<DataOrigin>,
     ): List<Aggregate> = reporter.reader.aggregate(aggregations, range, group, origins)
+
+    override suspend fun insert(samples: List<WritableSample>): List<WritableSample> = reporter.writer.insert(samples)
+
+    override suspend fun update(samples: List<WritableSample>) = reporter.writer.update(samples)
+
+    override suspend fun delete(sample: WritableSample) = reporter.writer.delete(sample)
+
+    override suspend fun deleteByIds(
+        type: HealthType,
+        ids: List<String>,
+        clientRecordIds: List<String>,
+    ) = reporter.writer.delete(type, ids, clientRecordIds)
+
+    override suspend fun deleteByRange(
+        type: HealthType,
+        range: TimeRange,
+    ) = reporter.writer.delete(type, range)
 
     /**
      * The Google Play page of Health Connect, as **HealthConnectManager.installIntent** builds it: the manager needs

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:health_connect_reporter/health_connect_reporter.dart';
 import 'package:health_connect_reporter/model/availability.dart';
 import 'package:health_connect_reporter/model/decorator/platform.dart';
+import 'package:health_connect_reporter/model/payload/steps.dart';
 import 'package:health_connect_reporter/model/permission.dart';
 import 'package:health_connect_reporter/model/time_group.dart';
 import 'package:health_connect_reporter/model/time_range.dart';
@@ -40,6 +41,10 @@ void main() {
 
       test('every_other_method_throws_unsupported_error', () {
         final range = TimeRange(startTimestamp: 0, endTimestamp: 1);
+        const steps = Steps(
+            startTimestamp: 0,
+            endTimestamp: 1,
+            harmonized: StepsHarmonized(count: 1));
         final methods = <String, Future<Object?> Function()>{
           'requestPermissions': () => HealthConnectReporter.requestPermissions(
               Permission.of([HealthType.steps])),
@@ -60,6 +65,13 @@ void main() {
               {Aggregation.stepsCountTotal},
               range,
               TimeGroupDuration(durationMillis: 60000)),
+          'insert': () => HealthConnectReporter.insert([steps]),
+          'update': () => HealthConnectReporter.update([steps]),
+          'delete': () => HealthConnectReporter.delete(steps),
+          'deleteByIds': () =>
+              HealthConnectReporter.deleteByIds(HealthType.steps, ids: ['id']),
+          'deleteByRange': () =>
+              HealthConnectReporter.deleteByRange(HealthType.steps, range),
         };
         for (final entry in methods.entries) {
           expect(entry.value, throwsUnsupportedError, reason: entry.key);

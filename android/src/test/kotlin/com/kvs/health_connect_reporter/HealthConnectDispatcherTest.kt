@@ -2,7 +2,9 @@ package com.kvs.health_connect_reporter
 
 import com.kvs.healthconnectreporter.HealthConnectException
 import com.kvs.healthconnectreporter.model.Aggregate
+import com.kvs.healthconnectreporter.model.Anchor
 import com.kvs.healthconnectreporter.model.Availability
+import com.kvs.healthconnectreporter.model.ChangeSet
 import com.kvs.healthconnectreporter.model.DataOrigin
 import com.kvs.healthconnectreporter.model.Ordering
 import com.kvs.healthconnectreporter.model.Page
@@ -18,6 +20,7 @@ import com.kvs.healthconnectreporter.model.type.Aggregation
 import com.kvs.healthconnectreporter.model.type.Feature
 import com.kvs.healthconnectreporter.model.type.HealthType
 import com.kvs.healthconnectreporter.model.type.TimeGroupUnit
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.mockk.coEvery
@@ -29,6 +32,7 @@ import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.serialization.json.Json
@@ -41,6 +45,9 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 private const val START = 1_760_000_000_000L
 private const val END = 1_760_003_600_000L
@@ -48,7 +55,15 @@ private const val END = 1_760_003_600_000L
 @OptIn(ExperimentalCoroutinesApi::class)
 class HealthConnectDispatcherTest {
     private val health = mockk<HealthConnect>()
-    private val sut = HealthConnectDispatcher(health, TestScope(UnconfinedTestDispatcher()))
+    private val opened = mutableMapOf<String, EventChannel.StreamHandler>()
+    private val closed = mutableListOf<String>()
+    private val sut =
+        HealthConnectDispatcher(
+            health,
+            TestScope(UnconfinedTestDispatcher()),
+            open = { name, handler -> opened[name] = handler },
+            close = { closed += it },
+        )
 
     private val permissionMaps =
         listOf(
@@ -401,6 +416,69 @@ class HealthConnectDispatcherTest {
             assertEquals("InvalidValue", call(method, arguments).error?.third, "$method $arguments")
         }
         assertEquals("InvalidType", call("delete", mapOf("sample" to mapOf("type" to "mood"))).error?.third)
+    }
+
+    private val anchorMap = mapOf("token" to "token")
+    private val changeSet = ChangeSet(listOf(steps), listOf("id-2"), Anchor("next"))
+
+    @Test
+    fun anchor_sends_the_types_and_origins() {
+        coEvery { health.anchor(setOf(HealthType.STEPS, HealthType.WEIGHT), origins) } returns Anchor("token")
+
+        val reply = call("anchor", mapOf("types" to listOf("steps", "weight"), "origins" to originMaps))
+
+        assertEquals("{\"token\":\"token\"}", reply.value)
+    }
+
+    @Test
+    fun changes_read_the_anchor_and_reply_the_change_set() {
+        coEvery { health.changes(Anchor("token")) } returns changeSet
+
+        assertEquals(changeSet.json, call("changes", mapOf("anchor" to anchorMap)).value)
+    }
+
+    @Test
+    fun changes_of_an_expired_anchor_fail_with_anchor_expired() {
+        coEvery { health.changes(Anchor("token")) } throws HealthConnectException.AnchorExpired("expired")
+
+        assertEquals(
+            Triple("changes", "expired", "AnchorExpired"),
+            call("changes", mapOf("anchor" to anchorMap)).error,
+        )
+    }
+
+    @Test
+    fun observe_opens_an_event_channel_of_its_own_per_subscription() {
+        every { health.observe(Anchor("token"), 30.seconds) } returns emptyFlow()
+        every { health.observe(Anchor("token"), 1.minutes) } returns emptyFlow()
+
+        val first = call("observe", mapOf("anchor" to anchorMap, "interval" to 30_000)).value as String
+        val second = call("observe", mapOf("anchor" to anchorMap)).value as String
+
+        assertTrue(first.startsWith("health_connect_reporter_event_channel_observe_"))
+        assertTrue(first != second)
+        assertEquals(setOf(first, second), opened.keys)
+    }
+
+    @Test
+    fun cancelling_an_observe_subscription_closes_its_channel() {
+        every { health.observe(Anchor("token"), 1.minutes) } returns emptyFlow()
+        val name = call("observe", mapOf("anchor" to anchorMap)).value as String
+
+        opened.getValue(name).onCancel(null)
+
+        assertEquals(listOf(name), closed)
+    }
+
+    @Test
+    fun observe_with_invalid_arguments_fails_the_call_without_a_channel() {
+        every { health.observe(Anchor("token"), Duration.ZERO) } throws HealthConnectException.InvalidValue("interval")
+
+        assertEquals("InvalidValue", call("observe", mapOf("anchor" to anchorMap, "interval" to 0)).error?.third)
+        assertEquals("InvalidValue", call("observe", mapOf("interval" to 1000)).error?.third)
+        assertEquals("InvalidValue", call("anchor", mapOf("types" to "steps")).error?.third)
+        assertEquals("InvalidType", call("anchor", mapOf("types" to listOf("STEPS"))).error?.third)
+        assertTrue(opened.isEmpty())
     }
 
     @Test

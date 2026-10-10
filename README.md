@@ -8,7 +8,7 @@ A Flutter plugin that reads, writes and observes [Android Health Connect](https:
 
 Its siblings are [health_kit_reporter](https://pub.dev/packages/health_kit_reporter) for Apple Health and [samsung_health_reporter](https://pub.dev/packages/samsung_health_reporter) for Samsung Health.
 
-> **Status**: under construction. `availability`, the permission calls, the reader and the writer exist; the observer follows (see `AGENTS.md`). Nothing is released yet.
+> **Status**: under construction. Every HealthConnectReporter call exists; the example app follows (see `AGENTS.md`). Nothing is released yet.
 
 ## Requirements
 
@@ -146,6 +146,55 @@ await HealthConnectReporter.update([
 await HealthConnectReporter.delete(inserted.last); // by id, else by clientRecordId
 await HealthConnectReporter.deleteByIds(HealthType.steps, clientRecordIds: ['steps-2026-10-10-09']);
 await HealthConnectReporter.deleteByRange(HealthType.weight, TimeRange.lastDays(1));
+```
+
+### Observe changes
+
+An anchor is a position in Health Connect's change history. Store it, and read only what changed since:
+
+```dart
+var anchor = await HealthConnectReporter.anchor({HealthType.steps, HealthType.heartRate});
+// later
+final changeSet = await HealthConnectReporter.changes(anchor);
+print('${changeSet.upserted.length} upserted, ${changeSet.deletedIds.length} deleted');
+anchor = changeSet.anchor; // store it for the next call
+```
+
+While the app runs, `observe` polls on an event channel of its own, first right away, and reports every non-empty change set:
+
+```dart
+final subscription = HealthConnectReporter.observe(
+  anchor,
+  interval: const Duration(minutes: 1),
+  onUpdate: (changeSet) => anchor = changeSet.anchor,
+  onError: (error) => print(error), // polling stops, e.g. on AnchorExpired
+);
+// cancel to stop polling
+await subscription.cancel();
+```
+
+Health Connect keeps changes for 30 days: an older anchor fails with `AnchorExpired`, so read the data again in full and take a new anchor.
+
+#### Background sync
+
+`observe` polls only while the Flutter engine runs. To sync in the background, schedule a periodic task with [workmanager](https://pub.dev/packages/workmanager) and read the changes of your stored anchor there; reading in the background needs `PermissionReadInBackground()` (check `Feature.readHealthDataInBackground` first) and its manifest entry `android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND`.
+
+```dart
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, input) async {
+    final anchor = Anchor(token: await loadToken()); // your storage
+    final changeSet = await HealthConnectReporter.changes(anchor);
+    await upload(changeSet); // your sync
+    await saveToken(changeSet.anchor.token);
+    return true;
+  });
+}
+
+// once, after the user granted the permissions
+await Workmanager().initialize(callbackDispatcher);
+await Workmanager().registerPeriodicTask('health-sync', 'health-sync',
+    frequency: const Duration(minutes: 15));
 ```
 
 Errors arrive as `PlatformException`s whose `code` is the method name and whose `details` name the error: `NotAuthorized`, `InvalidType`, `InvalidValue`, `NotAvailable`, `AnchorExpired` or `Platform`.

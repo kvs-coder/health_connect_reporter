@@ -7,7 +7,9 @@ import android.net.Uri
 import com.kvs.healthconnectreporter.HealthConnectException
 import com.kvs.healthconnectreporter.HealthConnectReporter
 import com.kvs.healthconnectreporter.model.Aggregate
+import com.kvs.healthconnectreporter.model.Anchor
 import com.kvs.healthconnectreporter.model.Availability
+import com.kvs.healthconnectreporter.model.ChangeSet
 import com.kvs.healthconnectreporter.model.DataOrigin
 import com.kvs.healthconnectreporter.model.Ordering
 import com.kvs.healthconnectreporter.model.Page
@@ -20,9 +22,12 @@ import com.kvs.healthconnectreporter.model.type.Aggregation
 import com.kvs.healthconnectreporter.model.type.Feature
 import com.kvs.healthconnectreporter.model.type.HealthType
 import com.kvs.healthconnectreporter.service.aggregate
+import kotlinx.coroutines.flow.Flow
+import kotlin.time.Duration
 
 /**
- * [HealthConnect] over one **HealthConnectReporter**.
+ * [HealthConnect] over one **HealthConnectReporter**, which serves the method channel and every observe
+ * subscription.
  *
  * Connecting throws **HealthConnectException.NotAvailable** until Health Connect is installed and up to date, so
  * the reporter is created lazily on the first call that needs it, and again on the next call after a failure.
@@ -108,6 +113,18 @@ class ReporterHealthConnect(
         type: HealthType,
         range: TimeRange,
     ) = reporter.writer.delete(type, range)
+
+    override suspend fun anchor(
+        types: Set<HealthType>,
+        origins: Set<DataOrigin>,
+    ): Anchor = reporter.observer.anchor(types, origins)
+
+    override suspend fun changes(anchor: Anchor): ChangeSet = reporter.observer.changes(anchor)
+
+    override fun observe(
+        anchor: Anchor,
+        interval: Duration,
+    ): Flow<ChangeSet> = reporter.observer.observe(anchor, interval)
 
     /**
      * The Google Play page of Health Connect, as **HealthConnectManager.installIntent** builds it: the manager needs

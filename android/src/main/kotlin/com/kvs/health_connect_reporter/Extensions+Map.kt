@@ -1,6 +1,7 @@
 package com.kvs.health_connect_reporter
 
 import com.kvs.healthconnectreporter.HealthConnectException
+import com.kvs.healthconnectreporter.model.Anchor
 import com.kvs.healthconnectreporter.model.DataOrigin
 import com.kvs.healthconnectreporter.model.Ordering
 import com.kvs.healthconnectreporter.model.Permission
@@ -70,6 +71,8 @@ internal fun Map<String, Any?>.optionalString(key: String): String? = this[key] 
 // Dart ints arrive as Integer or Long, depending on their size
 internal fun Map<String, Any?>.optionalInt(key: String): Int? = (this[key] as? Number)?.toInt()
 
+internal fun Map<String, Any?>.optionalLong(key: String): Long? = (this[key] as? Number)?.toLong()
+
 internal fun Map<String, Any?>.strings(key: String): List<String> =
     (this[key] as? List<*>)?.map { it as? String ?: missing(key) } ?: missing(key)
 
@@ -98,6 +101,11 @@ internal fun Map<String, Any?>.feature(): Feature = constant("feature", string("
 
 /** A type by its identifier, e.g. `heart_rate`; an unknown one throws **HealthConnectException.InvalidType** */
 internal fun Map<String, Any?>.healthType(key: String = "type"): HealthType = HealthType.make(string(key))
+
+internal fun Map<String, Any?>.healthTypes(): Set<HealthType> =
+    strings("types").mapTo(mutableSetOf()) { HealthType.make(it) }
+
+internal fun Map<String, Any?>.anchor(): Anchor = Anchor.make(map("anchor"))
 
 internal fun Map<String, Any?>.range(): TimeRange = TimeRange.make(map("range"))
 

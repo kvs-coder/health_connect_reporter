@@ -1,14 +1,21 @@
 package com.kvs.health_connect_reporter
 
 import com.kvs.healthconnectreporter.HealthConnectException
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 
 /** The method channel of every [Method] */
 const val METHOD_CHANNEL = "health_connect_reporter_method_channel"
+
+/** Prefix of the event channel of every observe subscription */
+const val OBSERVE_EVENT_CHANNEL = "health_connect_reporter_event_channel_observe_"
 
 /** Dart methods of `HealthConnectReporter`, named like them */
 @Suppress("EnumEntryName", "ktlint:standard:enum-entry-name-case")
@@ -30,6 +37,9 @@ enum class Method {
     delete,
     deleteByIds,
     deleteByRange,
+    anchor,
+    changes,
+    observe,
 }
 
 /**
@@ -37,10 +47,15 @@ enum class Method {
  *
  * Results are the library's JSON (lists as JSON arrays) or bools; every failure replies a `PlatformException` whose
  * code is the method name, message the error's message and details its kind (see [details]).
+ *
+ * @param open registers an event channel of an observe subscription
+ * @param close unregisters it once Dart cancels the subscription
  */
 class HealthConnectDispatcher(
     private val health: HealthConnect,
     private val scope: CoroutineScope,
+    private val open: (name: String, handler: EventChannel.StreamHandler) -> Unit,
+    private val close: (name: String) -> Unit,
 ) : MethodChannel.MethodCallHandler {
     override fun onMethodCall(
         call: MethodCall,
@@ -165,7 +180,33 @@ class HealthConnectDispatcher(
             Method.deleteByRange -> {
                 health.deleteByRange(arguments.healthType(), arguments.range()).let { true }
             }
+
+            Method.anchor -> {
+                health.anchor(arguments.healthTypes(), arguments.origins()).json
+            }
+
+            Method.changes -> {
+                health.changes(arguments.anchor()).json
+            }
+
+            Method.observe -> {
+                openObserveChannel(arguments)
+            }
         }
+
+    /**
+     * Checks the arguments of an observe subscription and opens its event channel; Dart listens to it to start
+     * polling and cancels it to stop polling and close the channel.
+     *
+     * @return **String** the event channel's name
+     */
+    private fun openObserveChannel(arguments: Map<String, Any?>): String {
+        val interval = arguments.optionalLong("interval")?.milliseconds ?: 1.minutes
+        val changeSets = health.observe(arguments.anchor(), interval)
+        val name = OBSERVE_EVENT_CHANNEL + UUID.randomUUID()
+        open(name, ObserveStreamHandler(changeSets, scope) { close(name) })
+        return name
+    }
 
     private companion object {
         /** HealthConnectReader's default page size */

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:health_connect_reporter/health_connect_reporter.dart';
+import 'package:health_connect_reporter/model/anchor.dart';
 import 'package:health_connect_reporter/model/availability.dart';
 import 'package:health_connect_reporter/model/decorator/platform.dart';
 import 'package:health_connect_reporter/model/payload/steps.dart';
@@ -72,10 +73,17 @@ void main() {
               HealthConnectReporter.deleteByIds(HealthType.steps, ids: ['id']),
           'deleteByRange': () =>
               HealthConnectReporter.deleteByRange(HealthType.steps, range),
+          'anchor': () => HealthConnectReporter.anchor({HealthType.steps}),
+          'changes': () =>
+              HealthConnectReporter.changes(const Anchor(token: 'token')),
         };
         for (final entry in methods.entries) {
           expect(entry.value, throwsUnsupportedError, reason: entry.key);
         }
+        expect(
+            () => HealthConnectReporter.observe(const Anchor(token: 'token'),
+                onUpdate: (_) {}),
+            throwsUnsupportedError);
         expect(calls, isEmpty);
       });
 

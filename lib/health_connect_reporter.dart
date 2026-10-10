@@ -4,10 +4,13 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 
 import 'model/aggregate.dart';
+import 'model/anchor.dart';
 import 'model/availability.dart';
+import 'model/change_set.dart';
 import 'model/data_origin.dart';
 import 'model/decorator/extensions.dart';
 import 'model/decorator/platform.dart';
+import 'model/decorator/subscription.dart';
 import 'model/page.dart';
 import 'model/payload/sample.dart';
 import 'model/permission.dart';
@@ -44,6 +47,9 @@ import 'model/type/ordering.dart';
 /// - [delete]
 /// - [deleteByIds]
 /// - [deleteByRange]
+/// - [anchor]
+/// - [changes]
+/// - [observe]
 ///
 /// Health Connect is available only on Android: on any other platform
 /// [availability] returns [Availability.unavailable] and every other method
@@ -277,4 +283,53 @@ class HealthConnectReporter {
   ///
   static Future<bool> deleteByRange(HealthType type, TimeRange range) =>
       _status('deleteByRange', {'type': type.identifier, 'range': range.map});
+
+  /// Creates an [Anchor] at the current end of the change history
+  /// of [types]; [origins] observes only the changes of these apps.
+  /// Store it and pass it to [changes] or [observe].
+  ///
+  /// Fails with `InvalidValue` when [types] is empty.
+  ///
+  static Future<Anchor> anchor(Set<HealthType> types,
+      {Set<DataOrigin> origins = const {}}) async {
+    final String json = await _methodChannel.invokeMethod('anchor', {
+      'types': types.map((e) => e.identifier).toList(),
+      'origins': _origins(origins),
+    });
+    return Anchor.fromJson(parseObject(json));
+  }
+
+  /// Reads every change since [anchor]: upserted samples, deleted ids
+  /// and the next anchor. Store [ChangeSet.anchor] for the next call.
+  ///
+  /// Health Connect keeps changes for 30 days: an older anchor fails with
+  /// `AnchorExpired`, so read the data again in full and take a new anchor.
+  /// In the background reading changes also needs
+  /// [PermissionReadInBackground].
+  ///
+  static Future<ChangeSet> changes(Anchor anchor) async {
+    final String json =
+        await _methodChannel.invokeMethod('changes', {'anchor': anchor.map});
+    return ChangeSet.fromJson(parseObject(json));
+  }
+
+  /// Polls the changes since [anchor] every [interval] while subscribed,
+  /// first right away, and calls [onUpdate] with every non-empty [ChangeSet].
+  /// Store the last [ChangeSet.anchor] to resume later.
+  /// Every subscription polls on an [EventChannel] of its own;
+  /// cancel it to stop polling. Errors, e.g. `AnchorExpired`, end polling
+  /// and reach [onError]; so does a non-positive [interval].
+  ///
+  static StreamSubscription<dynamic> observe(Anchor anchor,
+      {Duration interval = const Duration(minutes: 1),
+      required void Function(ChangeSet changeSet) onUpdate,
+      Function? onError}) {
+    return subscribe<ChangeSet>(
+        _methodChannel,
+        'observe',
+        {'anchor': anchor.map, 'interval': interval.inMilliseconds},
+        (event) => ChangeSet.fromJson(parseObject(event)),
+        onUpdate,
+        onError);
+  }
 }

@@ -7,7 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:health_connect_reporter/exceptions.dart';
 import 'package:health_connect_reporter/health_connect_reporter.dart';
 import 'package:health_connect_reporter/model/aggregate.dart';
+import 'package:health_connect_reporter/model/anchor.dart';
 import 'package:health_connect_reporter/model/availability.dart';
+import 'package:health_connect_reporter/model/change_set.dart';
 import 'package:health_connect_reporter/model/data_origin.dart';
 import 'package:health_connect_reporter/model/payload/sample.dart';
 import 'package:health_connect_reporter/model/payload/intermenstrual_bleeding.dart';
@@ -406,6 +408,135 @@ void main() {
           throwsA(isA<PlatformException>()
               .having((e) => e.code, 'code', 'update')
               .having((e) => e.details, 'details', 'InvalidValue')));
+    });
+  });
+
+  group('observer', () {
+    const anchor = Anchor(token: 'token');
+
+    test('anchor_sends_the_types_and_origins', () async {
+      replies['anchor'] = jsonEncode(fixtures.anchor);
+
+      final sut = await HealthConnectReporter.anchor(
+          {HealthType.steps, HealthType.heartRate},
+          origins: {const DataOrigin(packageName: 'com.example')});
+
+      expect(sut, anchor);
+      expect(calls['anchor'], {
+        'types': ['steps', 'heart_rate'],
+        'origins': [fixtures.dataOrigin],
+      });
+    });
+
+    test('changes_send_the_anchor_and_parse_the_change_set', () async {
+      replies['changes'] = jsonEncode(fixtures.changeSet);
+
+      final sut = await HealthConnectReporter.changes(anchor);
+
+      expect(calls['changes'], {'anchor': fixtures.anchor});
+      expect(sut, ChangeSet.fromJson(fixtures.changeSet));
+    });
+
+    test('changes_of_an_expired_anchor_throw_anchor_expired', () async {
+      replies['changes'] = PlatformException(
+          code: 'changes', message: 'expired', details: 'AnchorExpired');
+
+      expect(
+          HealthConnectReporter.changes(anchor),
+          throwsA(isA<PlatformException>()
+              .having((e) => e.details, 'details', 'AnchorExpired')));
+    });
+
+    test('observe_listens_to_its_channel_and_reports_change_sets_and_errors',
+        () async {
+      const name = 'health_connect_reporter_event_channel_observe_1';
+      final cancelled = <String>[];
+      replies['observe'] = name;
+      messenger.setMockStreamHandler(
+          const EventChannel(name),
+          MockStreamHandler.inline(
+              onListen: (arguments, sink) {
+                sink.success(jsonEncode(fixtures.changeSet));
+                sink.error(
+                    code: 'observe',
+                    message: 'expired',
+                    details: 'AnchorExpired');
+              },
+              onCancel: (_) => cancelled.add(name)));
+      final updates = <ChangeSet>[];
+      final errors = <Object>[];
+
+      final sut = HealthConnectReporter.observe(anchor,
+          interval: const Duration(seconds: 30),
+          onUpdate: updates.add,
+          onError: errors.add);
+      await pumpEventQueue();
+      await sut.cancel();
+
+      expect(calls['observe'], {'anchor': fixtures.anchor, 'interval': 30000});
+      expect(updates.single, ChangeSet.fromJson(fixtures.changeSet));
+      expect(
+          errors.single,
+          isA<PlatformException>()
+              .having((e) => e.code, 'code', 'observe')
+              .having((e) => e.details, 'details', 'AnchorExpired'));
+      expect(cancelled, [name]);
+      messenger.setMockStreamHandler(const EventChannel(name), null);
+    });
+
+    test('observe_events_that_are_no_change_set_reach_on_error', () async {
+      const name = 'health_connect_reporter_event_channel_observe_2';
+      replies['observe'] = name;
+      messenger.setMockStreamHandler(const EventChannel(name),
+          MockStreamHandler.inline(onListen: (arguments, sink) {
+        sink.success('[]');
+      }));
+      final errors = <Object>[];
+
+      final sut = HealthConnectReporter.observe(anchor,
+          onUpdate: (_) {}, onError: errors.add);
+      await pumpEventQueue();
+      await sut.cancel();
+
+      expect(errors.single, isA<InvalidValueException>());
+      messenger.setMockStreamHandler(const EventChannel(name), null);
+    });
+
+    test('observe_failing_its_call_reports_the_error', () async {
+      replies['observe'] = PlatformException(
+          code: 'observe',
+          message: 'Invalid interval',
+          details: 'InvalidValue');
+      final errors = <Object>[];
+
+      final sut = HealthConnectReporter.observe(anchor,
+          interval: Duration.zero, onUpdate: (_) {}, onError: errors.add);
+      await pumpEventQueue();
+      await sut.cancel();
+
+      expect(calls['observe'], {'anchor': fixtures.anchor, 'interval': 0});
+      expect(
+          errors.single,
+          isA<PlatformException>()
+              .having((e) => e.details, 'details', 'InvalidValue'));
+    });
+
+    test('observe_cancelled_while_planned_releases_its_channel', () async {
+      const name = 'health_connect_reporter_event_channel_observe_3';
+      final cancelled = <String>[];
+      replies['observe'] = name;
+      messenger.setMockStreamHandler(
+          const EventChannel(name),
+          MockStreamHandler.inline(
+              onListen: (arguments, sink) {},
+              onCancel: (_) => cancelled.add(name)));
+
+      final sut = HealthConnectReporter.observe(anchor, onUpdate: (_) {});
+      await sut.cancel();
+      await pumpEventQueue();
+
+      expect(cancelled, [name]);
+      messenger.setMockStreamHandler(const EventChannel(name), null);
     });
   });
 }

@@ -1,7 +1,9 @@
 package com.kvs.health_connect_reporter
 
 import com.kvs.healthconnectreporter.model.Aggregate
+import com.kvs.healthconnectreporter.model.Anchor
 import com.kvs.healthconnectreporter.model.Availability
+import com.kvs.healthconnectreporter.model.ChangeSet
 import com.kvs.healthconnectreporter.model.DataOrigin
 import com.kvs.healthconnectreporter.model.Ordering
 import com.kvs.healthconnectreporter.model.Page
@@ -13,6 +15,8 @@ import com.kvs.healthconnectreporter.model.payload.WritableSample
 import com.kvs.healthconnectreporter.model.type.Aggregation
 import com.kvs.healthconnectreporter.model.type.Feature
 import com.kvs.healthconnectreporter.model.type.HealthType
+import kotlinx.coroutines.flow.Flow
+import kotlin.time.Duration
 
 /**
  * The HealthConnectReporter calls the dispatcher makes, one per Dart method.
@@ -86,4 +90,16 @@ interface HealthConnect {
         type: HealthType,
         range: TimeRange,
     )
+
+    suspend fun anchor(
+        types: Set<HealthType>,
+        origins: Set<DataOrigin>,
+    ): Anchor
+
+    suspend fun changes(anchor: Anchor): ChangeSet
+
+    fun observe(
+        anchor: Anchor,
+        interval: Duration,
+    ): Flow<ChangeSet>
 }

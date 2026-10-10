@@ -8,7 +8,7 @@ A Flutter plugin that reads, writes and observes [Android Health Connect](https:
 
 Its siblings are [health_kit_reporter](https://pub.dev/packages/health_kit_reporter) for Apple Health and [samsung_health_reporter](https://pub.dev/packages/samsung_health_reporter) for Samsung Health.
 
-> **Status**: under construction. Only `availability` exists; the manager, reader, writer and observer follow (see `AGENTS.md`). Nothing is released yet.
+> **Status**: under construction. `availability` and the permission calls exist; the reader, writer and observer follow (see `AGENTS.md`). Nothing is released yet.
 
 ## Requirements
 
@@ -53,13 +53,37 @@ switch (await HealthConnectReporter.availability()) {
     // read, write and observe
     break;
   case Availability.updateRequired:
-    // send the user to Health Connect on Google Play
+    await HealthConnectReporter.openInstall();
     break;
   case Availability.unavailable:
     // Health Connect does not run on this device
     break;
 }
 ```
+
+### Permissions
+
+The permission screen runs on your app's activity, so a plain `FlutterActivity` works. Request only permissions your manifest declares: anything else fails with `InvalidValue`, and so does an empty set.
+
+```dart
+final granted = await HealthConnectReporter.requestPermissions({
+  ...Permission.of([HealthType.steps, HealthType.heartRate]), // read and write
+  const PermissionData(healthType: HealthType.weight, access: AccessType.read),
+  const PermissionReadInBackground(), // needs Feature.readHealthDataInBackground
+});
+final current = await HealthConnectReporter.grantedPermissions();
+await HealthConnectReporter.revokeAllPermissions();
+```
+
+A permission that needs a feature the device lacks fails with `NotAvailable`; check features first:
+
+```dart
+if (await HealthConnectReporter.isFeatureAvailable(Feature.skinTemperature)) {
+  // read and write HealthType.skinTemperature
+}
+```
+
+`openSettings()` opens Health Connect's data management screen, and `openInstall()` opens Health Connect on Google Play when `availability()` is `Availability.updateRequired`.
 
 Errors arrive as `PlatformException`s whose `code` is the method name and whose `details` name the error: `NotAuthorized`, `InvalidType`, `InvalidValue`, `NotAvailable`, `AnchorExpired` or `Platform`.
 

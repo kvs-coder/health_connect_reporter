@@ -1,6 +1,8 @@
 package com.kvs.health_connect_reporter
 
 import com.kvs.healthconnectreporter.model.Availability
+import com.kvs.healthconnectreporter.model.Permission
+import com.kvs.healthconnectreporter.model.type.Feature
 
 /**
  * The HealthConnectReporter calls the dispatcher makes, one per Dart method.
@@ -10,4 +12,16 @@ import com.kvs.healthconnectreporter.model.Availability
  */
 interface HealthConnect {
     fun availability(): Availability
+
+    suspend fun requestPermissions(permissions: Set<Permission>): Set<Permission>
+
+    suspend fun grantedPermissions(): Set<Permission>
+
+    suspend fun revokeAllPermissions()
+
+    suspend fun isFeatureAvailable(feature: Feature): Boolean
+
+    fun openSettings()
+
+    fun openInstall()
 }

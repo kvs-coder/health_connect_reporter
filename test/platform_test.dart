@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:health_connect_reporter/health_connect_reporter.dart';
 import 'package:health_connect_reporter/model/availability.dart';
 import 'package:health_connect_reporter/model/decorator/platform.dart';
+import 'package:health_connect_reporter/model/permission.dart';
+import 'package:health_connect_reporter/model/type/feature.dart';
+import 'package:health_connect_reporter/model/type/health_type.dart';
 
 /// Health Connect is available only on Android: elsewhere nothing reaches the channel.
 void main() {
@@ -29,6 +32,23 @@ void main() {
       test('availability_is_unavailable_without_a_channel_call', () async {
         expect(await HealthConnectReporter.availability(),
             Availability.unavailable);
+        expect(calls, isEmpty);
+      });
+
+      test('every_other_method_throws_unsupported_error', () {
+        final methods = <String, Future<Object?> Function()>{
+          'requestPermissions': () => HealthConnectReporter.requestPermissions(
+              Permission.of([HealthType.steps])),
+          'grantedPermissions': HealthConnectReporter.grantedPermissions,
+          'revokeAllPermissions': HealthConnectReporter.revokeAllPermissions,
+          'isFeatureAvailable': () =>
+              HealthConnectReporter.isFeatureAvailable(Feature.skinTemperature),
+          'openSettings': HealthConnectReporter.openSettings,
+          'openInstall': HealthConnectReporter.openInstall,
+        };
+        for (final entry in methods.entries) {
+          expect(entry.value, throwsUnsupportedError, reason: entry.key);
+        }
         expect(calls, isEmpty);
       });
 

@@ -2,6 +2,8 @@ package com.kvs.health_connect_reporter
 
 import com.kvs.healthconnectreporter.HealthConnectException
 import com.kvs.healthconnectreporter.model.Availability
+import com.kvs.healthconnectreporter.model.Permission
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
 // Replies to Dart: the library's JSON
@@ -9,6 +11,10 @@ import kotlinx.serialization.json.Json
 /** **String** the availability's JSON value, e.g. `"available"` */
 internal val Availability.json: String
     get() = Json.encodeToString(Availability.serializer(), this)
+
+/** **String** JSON array of the permissions, e.g. `[{"type":"data","healthType":"STEPS","access":"READ"}]` */
+internal val Set<Permission>.json: String
+    get() = Json.encodeToString(ListSerializer(Permission.serializer()), toList())
 
 /**
  * **String** the error's kind for `PlatformException.details`: `NotAuthorized`, `InvalidType`, `InvalidValue`,

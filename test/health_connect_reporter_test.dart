@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart'
     show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/services.dart';
@@ -5,6 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:health_connect_reporter/exceptions.dart';
 import 'package:health_connect_reporter/health_connect_reporter.dart';
 import 'package:health_connect_reporter/model/availability.dart';
+import 'package:health_connect_reporter/model/permission.dart';
+import 'package:health_connect_reporter/model/type/access_type.dart';
+import 'package:health_connect_reporter/model/type/feature.dart';
+import 'package:health_connect_reporter/model/type/health_type.dart';
+
+import 'fixtures.dart' as fixtures;
 
 /// Every method sends the arguments the Kotlin dispatcher reads
 /// and parses the reply it sends.
@@ -71,6 +79,84 @@ void main() {
           throwsA(isA<PlatformException>()
               .having((e) => e.code, 'code', 'availability')
               .having((e) => e.details, 'details', 'Platform')));
+    });
+  });
+
+  group('manager', () {
+    final permissions = {
+      const PermissionData(
+          healthType: HealthType.steps, access: AccessType.read),
+      const PermissionReadInBackground(),
+      const PermissionReadHistory(),
+      const PermissionWriteExerciseRoute(),
+    };
+    final permissionsJson = jsonEncode(fixtures.permissions);
+
+    test('request_permissions_sends_every_permission_and_parses_the_granted',
+        () async {
+      replies['requestPermissions'] = permissionsJson;
+
+      expect(await HealthConnectReporter.requestPermissions(permissions),
+          permissions);
+      expect(
+          calls['requestPermissions'], {'permissions': fixtures.permissions});
+    });
+
+    test('request_permissions_passes_manifest_errors_on', () async {
+      replies['requestPermissions'] = PlatformException(
+          code: 'requestPermissions',
+          message: 'Permissions missing from the app manifest',
+          details: 'InvalidValue');
+
+      expect(
+          HealthConnectReporter.requestPermissions(
+              Permission.of([HealthType.weight])),
+          throwsA(isA<PlatformException>()
+              .having((e) => e.code, 'code', 'requestPermissions')
+              .having((e) => e.details, 'details', 'InvalidValue')));
+    });
+
+    test('granted_permissions_parses_the_library_json', () async {
+      replies['grantedPermissions'] = permissionsJson;
+
+      expect(await HealthConnectReporter.grantedPermissions(), permissions);
+      expect(calls['grantedPermissions'], isNull);
+      replies['grantedPermissions'] = '[]';
+      expect(await HealthConnectReporter.grantedPermissions(), isEmpty);
+    });
+
+    test('granted_permissions_of_an_unknown_kind_throw_invalid_value',
+        () async {
+      replies['grantedPermissions'] = '[{"type":"read_minds"}]';
+
+      expect(HealthConnectReporter.grantedPermissions(),
+          throwsA(isA<InvalidValueException>()));
+    });
+
+    test('revoke_all_permissions_replies_true', () async {
+      replies['revokeAllPermissions'] = true;
+
+      expect(await HealthConnectReporter.revokeAllPermissions(), isTrue);
+      expect(calls.keys, ['revokeAllPermissions']);
+    });
+
+    test('is_feature_available_sends_the_kotlin_name', () async {
+      replies['isFeatureAvailable'] = true;
+
+      expect(
+          await HealthConnectReporter.isFeatureAvailable(
+              Feature.plannedExercise),
+          isTrue);
+      expect(calls['isFeatureAvailable'], {'feature': 'PLANNED_EXERCISE'});
+    });
+
+    test('screens_open', () async {
+      replies['openSettings'] = true;
+      replies['openInstall'] = true;
+
+      expect(await HealthConnectReporter.openSettings(), isTrue);
+      expect(await HealthConnectReporter.openInstall(), isTrue);
+      expect(calls.keys, ['openSettings', 'openInstall']);
     });
   });
 }
